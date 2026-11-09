@@ -63,9 +63,9 @@ class ParamClientWidget(GroupWidget):
 
         :type node_name: str
         """
-        super(ParamClientWidget, self).__init__(
-            create_param_client(context.node, node_name,
-                                self._handle_param_event), node_name)
+        super().__init__(create_param_client(context.node, node_name,
+                                             self._handle_param_event),
+                         node_name)
 
         self._node_grn = node_name
         self._toplevel_treenode_name = node_name
@@ -122,11 +122,15 @@ class ParamClientWidget(GroupWidget):
 
         # Again, these UI operation above needs to happen in .ui file.
         try:
-            self.add_editor_widgets(self._param_client.get_parameters(
-                                        self._param_client.list_parameters()))
+            parameters = self._param_client.get_parameters(
+                             self._param_client.list_parameters())
+            descriptors = self._param_client.describe_parameters(
+                names=[p.name for p in parameters]
+                )
+            self.add_editor_widgets(parameters, descriptors)
         except Exception as e:
-            logging.warn(
-              f'Failed to retrieve parameters from node {self._node_grn}: {e}')
+            logging.warning(
+                f'Failed to retrieve parameters from node {self._node_grn}: {e}')
 
         self._text_filter.filter_changed_signal.connect(
             self._filter_key_changed)
@@ -136,8 +140,19 @@ class ParamClientWidget(GroupWidget):
     def get_node_grn(self):
         return self._node_grn
 
-    def get_treenode_names(self):
-        return self._param_client.list_parameters()
+    def _handle_param_event(
+        self, new_parameters, changed_parameters, deleted_parameters
+    ):
+        # TODO: Think about replacing callback architecture with signals.
+        if new_parameters:
+            try:
+                new_descriptors = self._param_client.describe_parameters(
+                    names=[p.name for p in new_parameters]
+                )
+                self.add_editor_widgets(new_parameters, new_descriptors)
+            except Exception as e:
+                logging.warning(
+                    'Failed to get information about parameters: ' + str(e))
 
     def _handle_load_clicked(self):
         filename = QFileDialog.getOpenFileName(
@@ -173,7 +188,7 @@ class ParamClientWidget(GroupWidget):
                                  self._param_client.list_parameters())
                 yaml.dump({p.name: p.value for p in parameters}, f)
             except Exception as e:
-                logging.warn(
+                logging.warning(
                     "Parameter saving wasn't successful because: " + str(e)
                 )
 
@@ -187,10 +202,13 @@ class ParamClientWidget(GroupWidget):
                 logging.warn(
                     'Failed to get information about parameters: ' + str(e))
 
-        if changed_parameters:
-            self.update_editor_widgets(changed_parameters)
-        if deleted_parameters:
-            self.remove_editor_widgets(deleted_parameters)
+        try:
+            self._param_client.set_parameters(parameters)
+        except Exception as e:
+            logging.warning(
+                "Parameter loading wasn't successful"
+                f' because: {e}'
+            )
 
     def add_editor_widgets(self, parameters):
         for parameter in parameters:
@@ -198,16 +216,30 @@ class ParamClientWidget(GroupWidget):
 
     def remove_editor_widgets(self, parameters):
         for parameter in parameters:
-            self.remove_editor_widget(parameter)
+            if parameter.name not in self._editor_widgets:
+                continue
+            logging.debug(f'Removing editor widget for {parameter.name}')
+            self._editor_widgets[parameter.name].hide(self.grid)
+            self._editor_widgets[parameter.name].close()
+            del self._editor_widgets[parameter.name]
 
     def update_editor_widgets(self, parameters):
         for parameter in parameters:
-            self.update_editor_widget(parameter)
+            if parameter.name not in self._editor_widgets:
+                continue
+            logging.debug(f'Updating editor widget for {parameter.name}')
+            self._editor_widgets[parameter.name].update_local(parameter.value)
 
-    def close(self):
-        super(ParamClientWidget, self).close()
-        self._param_client.close()
-        self.deleteLater()
+    def add_editor_widgets(self, parameters, descriptors):
+        for parameter, descriptor in zip(parameters, descriptors):
+            if Parameter.Type(descriptor.type) not in EDITOR_TYPES:
+                continue
+            logging.debug(f'Adding editor widget for {parameter.name}')
+            editor_widget = EDITOR_TYPES[Parameter.Type(descriptor.type)](
+                self._param_client, parameter, descriptor
+            )
+            self._editor_widgets[parameter.name] = editor_widget
+            editor_widget.display(self.grid)
 
     def _node_disable_bt_clicked(self):
         logging.debug('param_gs _node_disable_bt_clicked')
@@ -225,4 +257,4 @@ class ParamClientWidget(GroupWidget):
             self.add_editor_widgets(
                 self._param_client.get_parameters(param_names_filtered))
         except Exception as e:
-            logging.warn('Failed to retrieve parameters from node: ' + str(e))
+            logging.warning('Failed to retrieve parameters from node: ' + str(e))
