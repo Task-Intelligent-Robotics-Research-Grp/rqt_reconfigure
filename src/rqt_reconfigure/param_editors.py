@@ -127,7 +127,7 @@ class EditorWidget(QWidget):
         pass
 
     def contextMenuEvent(self, e):
-        self.cmenu.exec_(e.globalPos())
+        self.cmenu.exec(e.globalPos())
 
 
 class BooleanEditor(EditorWidget):
@@ -364,7 +364,7 @@ class DoubleEditor(EditorWidget):
             self._slider_horizontal.setRange(self._get_value_slider(self._min),
                                              self._get_value_slider(self._max))
             validator = QDoubleValidator(self._min, self._max, 8, self)
-            validator.setLocale(QLocale(QLocale.C))
+            validator.setLocale(QLocale(QLocale.Language.C))
             self._paramval_lineEdit.setValidator(validator)
 
             self._slider_horizontal.setValue(
@@ -380,7 +380,7 @@ class DoubleEditor(EditorWidget):
             self._slider_horizontal.valueChanged.connect(self._slider_changed)
         else:
             validator = QDoubleValidator()
-            validator.setLocale(QLocale(QLocale.C))
+            validator.setLocale(QLocale(QLocale.Language.C))
             self._paramval_lineEdit.setValidator(validator)
             self._min_val_label.setVisible(False)
             self._max_val_label.setVisible(False)
